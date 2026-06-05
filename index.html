@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>مستخرج Xtream (نظام الدمج الذكي جداً)</title>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <style>
+        :root {
+            --bg-color: #0f0c1b; --container-bg: #1d1834; --card-bg: #262143;
+            --primary: #8a4fff; --primary-hover: #733dd8; --text-main: #ffffff;
+            --text-muted: #b3a9db; --input-bg: #130f24; --border: #3d3460;
+            --success: #00e676; --accent: #ff007f; --danger: #ff3b3b;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: var(--bg-color); color: var(--text-main); padding: 30px 15px; }
+        .container { max-width: 900px; margin: 0 auto; }
+
+        .header-section { background-color: var(--container-bg); padding: 30px; border-radius: 16px; border: 1px solid var(--border); margin-bottom: 30px; }
+        h1 { text-align: center; color: var(--primary); font-size: 26px; margin-bottom: 10px; }
+        p.subtitle { text-align: center; color: var(--text-muted); margin-bottom: 25px; font-size: 15px; }
+
+        .upload-area { border: 2px dashed var(--primary); border-radius: 12px; padding: 40px 20px; text-align: center; cursor: pointer; background-color: rgba(138, 79, 255, 0.03); }
+        .upload-area:hover { background-color: rgba(138, 79, 255, 0.1); border-color: var(--accent); }
+        .upload-area input[type="file"] { display: none; }
+
+        #resultsContainer { display: flex; flex-direction: column; gap: 25px; }
+        .result-card { background-color: var(--container-bg); border: 1px solid var(--border); border-radius: 16px; padding: 25px; display: flex; flex-direction: column; gap: 20px; }
+        .card-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 15px; }
+        .card-title { font-size: 18px; color: var(--accent); font-weight: bold; }
+        .btn-delete { background-color: transparent; color: var(--danger); border: 1px solid var(--danger); padding: 5px 10px; border-radius: 6px; cursor: pointer; }
+        
+        .card-body { display: flex; flex-direction: column; gap: 20px; }
+        @media(min-width: 768px) { .card-body { flex-direction: row; } .image-col { width: 35%; } .data-col { width: 65%; } }
+        
+        .image-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 10px; }
+        .img-preview { width: 100%; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+
+        .loading-text { color: #ffca28; font-weight: bold; text-align: center; padding: 20px; direction: ltr; }
+        .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+        .form-group { margin-bottom: 10px; }
+        label { display: block; margin-bottom: 6px; font-size: 13px; color: var(--text-muted); }
+        
+        input[type="text"], textarea { width: 100%; padding: 10px; background-color: var(--input-bg); border: 1px solid var(--border); color: var(--text-main); border-radius: 8px; font-family: monospace; font-size: 14px; }
+        textarea { resize: vertical; min-height: 80px; direction: ltr; }
+
+        button { background-color: var(--primary); color: white; border: none; padding: 10px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; }
+        .btn-update { background-color: var(--card-bg); border: 1px solid var(--primary); margin-bottom: 15px; }
+        .btn-copy { background-color: #2a2442; border: 1px solid var(--border); margin-top: 8px; }
+        .output-box { background-color: rgba(19, 15, 36, 0.6); padding: 15px; border-radius: 10px; border: 1px solid var(--border); margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header-section">
+        <h1>مستخرج Xtream (النسخة الأقوى)</h1>
+        <p class="subtitle">تم تطوير خوارزمية البحث لتستخرج اليوزر والباسورد من أي مسافات أو سطور معقدة</p>
+        <div class="upload-area" id="dropZone" onclick="document.getElementById('fileInput').click()">
+            <p>اضغط أو اسحب مجموعة الصور هنا 📂</p>
+            <input type="file" id="fileInput" accept="image/*" multiple>
+        </div>
+    </div>
+    <div id="resultsContainer"></div>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    let batchCounter = 1;
+
+    fileInput.addEventListener('change', function(e) {
+        if (e.target.files.length > 0) handleFiles(e.target.files);
+        this.value = ''; 
+    });
+
+    async function handleFiles(fileList) {
+        const filesArray = Array.from(fileList).filter(file => file.type.startsWith('image/'));
+        if(filesArray.length === 0) return;
+
+        const uniqueId = 'batch_' + Date.now();
+        await createBatchUI(uniqueId, filesArray);
+        processBatchImages(uniqueId, filesArray);
+    }
+
+    async function createBatchUI(id, filesArray) {
+        let galleryHTML = '';
+        for (let i = 0; i < filesArray.length; i++) {
+            const dataUrl = await readFileAsDataURL(filesArray[i]);
+            galleryHTML += `<img src="${dataUrl}" class="img-preview">`;
+        }
+
+        const cardHTML = `
+            <div class="result-card" id="${id}">
+                <div class="card-header">
+                    <div class="card-title">🔍 دمج #${batchCounter++} (${filesArray.length} صور)</div>
+                    <button class="btn-delete" onclick="document.getElementById('${id}').remove()">❌ حذف</button>
+                </div>
+                <div class="card-body">
+                    <div class="image-col"><div class="image-gallery">${galleryHTML}</div></div>
+                    <div class="data-col">
+                        <div class="loading-text" id="loading_${id}">Starting AI... ⏳</div>
+                        <div id="content_${id}" style="display: none;">
+                            <div class="grid-2">
+                                <div class="form-group"><label>Host</label><input type="text" id="host_${id}" dir="ltr"></div>
+                                <div class="form-group"><label>Port</label><input type="text" id="port_${id}" dir="ltr"></div>
+                                <div class="form-group"><label>Username</label><input type="text" id="user_${id}" dir="ltr"></div>
+                                <div class="form-group"><label>Password</label><input type="text" id="pass_${id}" dir="ltr"></div>
+                            </div>
+                            <button class="btn-update" onclick="generateLinks('${id}')">🔄 تحديث الروابط</button>
+                            <div class="output-box">
+                                <label style="color: var(--accent);">1. بيانات النسخ</label>
+                                <textarea id="textOut_${id}" readonly></textarea>
+                                <button class="btn-copy" onclick="copyText('textOut_${id}')">📋 نسخ النص</button>
+                            </div>
+                            <div class="output-box">
+                                <label style="color: var(--success);">2. رابط M3U8</label>
+                                <textarea id="m3u8Out_${id}" readonly></textarea>
+                                <button class="btn-copy" onclick="copyText('m3u8Out_${id}')">📋 نسخ الرابط</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+        document.getElementById('resultsContainer').insertAdjacentHTML('afterbegin', cardHTML);
+    }
+
+    function readFileAsDataURL(file) {
+        return new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.readAsDataURL(file);
+        });
+    }
+
+    async function processBatchImages(id, filesArray) {
+        let combinedText = "";
+        const loadingEl = document.getElementById(`loading_${id}`);
+        
+        try {
+            for (let i = 0; i < filesArray.length; i++) {
+                const dataUrl = await readFileAsDataURL(filesArray[i]);
+                const result = await Tesseract.recognize(dataUrl, 'eng', {
+                    logger: m => {
+                        if (loadingEl) {
+                            if(m.status === 'recognizing text') {
+                                loadingEl.innerText = `Reading image ${i+1}/${filesArray.length} ... ${Math.round(m.progress * 100)}%`;
+                            } else {
+                                loadingEl.innerText = `Loading AI Engine: ${m.status}...`;
+                            }
+                        }
+                    }
+                });
+                combinedText += result.data.text + "\n\n---فاصل---\n\n";
+            }
+            
+            if(loadingEl) loadingEl.innerText = 'Extracting Data... ⚙️';
+            setTimeout(() => parseAndFillCombined(id, combinedText), 500);
+
+        } catch (error) {
+            console.error("AI Error:", error);
+            if(loadingEl) {
+                loadingEl.innerText = "⚠️ حصل خطأ! افتح المتصفح (F12) وشوف الكونسول.";
+                loadingEl.style.color = "var(--danger)";
+            }
+            document.getElementById(`content_${id}`).style.display = 'block'; 
+        }
+    }
+
+    function parseAndFillCombined(id, text) {
+        let host = "http://", port = "80", username = "", password = "";
+
+        // 1. استخراج الـ Host
+        const hostMatch = text.match(/Host:\s*([^\s]+)/i);
+        if (hostMatch) { host = "http://" + hostMatch[1].trim().replace(/^(http:\/\/|https:\/\/)/, ''); }
+
+        // 2. استخراج الـ Port
+        const destMatch = text.match(/Destination:\s*([^\s]+)/i);
+        if (destMatch && destMatch[1].includes(':')) {
+            port = destMatch[1].split(':')[1].replace(/[^\d]/g, '');
+        } else if (host && host.match(/:(\d+)/)) {
+            port = host.match(/:(\d+)/)[1];
+            host = host.replace(":" + port, "");
+        }
+
+        // 3. استخراج اليوزر والباسورد (الطريقة المباشرة من الروابط)
+        const userParam = text.match(/username=([^&\s\n"']+)/i);
+        const passParam = text.match(/password=([^&\s\n"']+)/i);
+        if (userParam) username = userParam[1];
+        if (passParam) password = passParam[1];
+
+        if (!username || !password) {
+            const urlDataMatch = text.match(/\/live\/([^\/\s]+)\/([^\/\s]+)/i);
+            if (urlDataMatch) { username = urlDataMatch[1]; password = urlDataMatch[2]; }
+        }
+
+        // 4. استخراج اليوزر والباسورد (خوارزمية البحث الشرسة لنظام POST Payload)
+        const extractAggressive = (keyword) => {
+            const lines = text.split('\n');
+            for (let i = 0; i < lines.length; i++) {
+                let lineLow = lines[i].toLowerCase();
+                // لو السطر فيه كلمة username أو password
+                if (lineLow.includes(keyword) && (lineLow.includes('name=') || lineLow.includes('form-data') || lineLow.includes('disposition'))) {
+                    // دور في الـ 7 سطور اللي تحتها لحد ما تلاقي الكلمة الصح
+                    for (let j = i + 1; j < i + 8 && j < lines.length; j++) {
+                        let val = lines[j].trim();
+                        // تأكد إنها مش سطر فاصل -- ولا كلمة Content ولا نفس الكلمة اللي بنبحث عنها
+                        if (val.length > 2 && !val.includes('--') && !val.toLowerCase().includes('content') && !val.toLowerCase().includes(keyword)) {
+                            return val.replace(/["']/g, ''); // رجع الكلمة ونضفها من أي علامات تنصيص
+                        }
+                    }
+                }
+            }
+            return "";
+        };
+
+        if (!username) username = extractAggressive('username');
+        if (!password) password = extractAggressive('password');
+
+        // تعبئة البيانات
+        document.getElementById(`host_${id}`).value = host; document.getElementById(`port_${id}`).value = port;
+        document.getElementById(`user_${id}`).value = username; document.getElementById(`pass_${id}`).value = password;
+        
+        const loadingEl = document.getElementById(`loading_${id}`);
+        if(loadingEl) loadingEl.style.display = 'none'; 
+        document.getElementById(`content_${id}`).style.display = 'block';
+        
+        generateLinks(id);
+    }
+
+    function generateLinks(id) {
+        let h = document.getElementById(`host_${id}`).value.trim();
+        let pt = document.getElementById(`port_${id}`).value.trim();
+        let u = document.getElementById(`user_${id}`).value.trim();
+        let p = document.getElementById(`pass_${id}`).value.trim();
+
+        if (!h.startsWith("http")) h = "http://" + h;
+        h = h.replace(/:\d+$/, ""); // تنظيف الهوست من أي بورت متكرر
+
+        document.getElementById(`textOut_${id}`).value = `Host: ${h}\nPort: ${pt}\nUsername: ${u}\nPassword: ${p}`;
+        document.getElementById(`m3u8Out_${id}`).value = `${h}:${pt}/get.php?username=${u}&password=${p}&type=m3u_plus&output=ts`;
+    }
+
+    function copyText(elementId) {
+        const copyText = document.getElementById(elementId);
+        copyText.select(); navigator.clipboard.writeText(copyText.value).then(() => { alert("تم النسخ بنجاح! ✅"); });
+    }
+</script>
+
+</body>
+</html>
